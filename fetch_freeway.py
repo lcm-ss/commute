@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """抓取高公局(tisvcloud)路段即時路況,依 route.json 篩出你行駛的路段,輸出 data/traffic.json"""
-import gzip, json, os, urllib.request
+import gzip, json, os, urllib.error, urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
@@ -11,7 +11,7 @@ DIR_MAP = {"N": ("N", "北"), "S": ("S", "南"), "E": ("E", "東"), "W": ("W", "
 
 def get(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    data = urllib.request.urlopen(req, timeout=30).read()
+    data = urllib.request.urlopen(req, timeout=10).read()
     return gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
 
 
@@ -20,8 +20,10 @@ def first_ok(urls):
     for u in urls:
         try:
             return get(u), u
-        except Exception as e:  # noqa
-            last = f"{u} -> {e}"
+        except urllib.error.HTTPError as e:  # 檔案不存在等,換下一個網址
+            last = f"{u} -> HTTP {e.code}"
+        except Exception as e:  # 逾時/連不上:不必再試其他網址
+            raise RuntimeError(f"無法連線到高公局({u}):{e}。可能是對方擋海外 IP 或網站暫時無回應。")
     raise RuntimeError("全部來源都失敗,最後一個:" + str(last))
 
 
