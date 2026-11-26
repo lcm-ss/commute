@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上下班路況</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1a73e8; --border:#e3e5e8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111317; --card:#1b1e24; --text:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --border:#2c3038; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px 16px 40px; background:var(--bg); color:var(--text);
+         font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; }
+  main { max-width:480px; margin:0 auto; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .btn { display:block; text-align:center; text-decoration:none; padding:16px; border-radius:12px;
+         font-size:1.1rem; font-weight:600; margin-bottom:10px; border:2px solid var(--accent);
+         color:var(--accent); background:transparent; }
+  .btn.primary { background:var(--accent); color:#fff; }
+  @media (prefers-color-scheme: dark) { .btn.primary { color:#111317; } }
+  .links a { display:block; padding:10px 0; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
+  .links a:last-child { border-bottom:0; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:10px; font-size:1rem; border-radius:8px; border:1px solid var(--border);
+                  background:var(--bg); color:var(--text); }
+  button.save { margin-top:12px; width:100%; padding:10px; font-size:1rem; border-radius:8px; border:0;
+                background:var(--accent); color:#fff; cursor:pointer; }
+  @media (prefers-color-scheme: dark) { button.save { color:#111317; } }
+  .hint { font-size:.8rem; color:var(--muted); margin-top:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🚦 上下班路況</h1>
+  <div class="sub" id="now"></div>
+
+  <div id="buttons"></div>
+
+  <div class="card links">
+    <a id="trafficLayer" target="_blank" rel="noopener">🗺 Google 地圖:即時路況圖層</a>
+    <a href="https://1968.freeway.gov.tw/" target="_blank" rel="noopener">🛣 1968 國道即時路況</a>
+  </div>
+
+  <details class="card" id="settings">
+    <summary>⚙️ 設定地址</summary>
+    <label>家</label>
+    <input id="home" placeholder="例:台中車站">
+    <label>公司</label>
+    <input id="work" placeholder="例:台中市政府">
+    <label>交通方式</label>
+    <select id="mode">
+      <option value="driving">開車</option>
+      <option value="two-wheeler">機車</option>
+      <option value="transit">大眾運輸</option>
+      <option value="walking">步行</option>
+    </select>
+    <button class="save" id="save">儲存</button>
+    <div class="hint">地址只存在你自己的瀏覽器(localStorage),不會上傳到 GitHub。</div>
+  </details>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d = "") { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+
+// 網址參數優先,例如 ?home=台中車站&work=台中市政府&mode=two-wheeler
+const q = new URLSearchParams(location.search);
+const cfg = {
+  home: q.get("home") || store.get("home"),
+  work: q.get("work") || store.get("work"),
+  mode: q.get("mode") || store.get("mode", "driving"),
+};
+
+function dirUrl(origin, dest) {
+  return "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(origin) +
+         "&destination=" + encodeURIComponent(dest) + "&travelmode=" + cfg.mode;
+}
+
+function render() {
+  const d = new Date();
+  $("now").textContent = d.toLocaleString("zh-TW", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" });
+  $("trafficLayer").href = "https://www.google.com/maps/@?api=1&map_action=map&layer=traffic";
+
+  const box = $("buttons");
+  box.innerHTML = "";
+  if (!cfg.home || !cfg.work) {
+    box.innerHTML = '<div class="card">請先展開下方「設定地址」填入家和公司。</div>';
+    $("settings").open = true;
+  } else {
+    const morning = d.getHours() < 12;
+    const toWork = Object.assign(document.createElement("a"), {
+      className: "btn" + (morning ? " primary" : ""), textContent: "🚗 上班路況(家 → 公司)",
+      href: dirUrl(cfg.home, cfg.work), target: "_blank", rel: "noopener" });
+    const toHome = Object.assign(document.createElement("a"), {
+      className: "btn" + (morning ? "" : " primary"), textContent: "🏠 下班路況(公司 → 家)",
+      href: dirUrl(cfg.work, cfg.home), target: "_blank", rel: "noopener" });
+    box.append(morning ? toWork : toHome, morning ? toHome : toWork);
+  }
+  $("home").value = cfg.home; $("work").value = cfg.work; $("mode").value = cfg.mode;
+}
+
+$("save").onclick = () => {
+  cfg.home = $("home").value.trim(); cfg.work = $("work").value.trim(); cfg.mode = $("mode").value;
+  store.set("home", cfg.home); store.set("work", cfg.work); store.set("mode", cfg.mode);
+  render();
+};
+render();
+</script>
+</body>
+</html>
