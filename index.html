@@ -119,7 +119,11 @@ async function callRoutes(body) {
 async function evaluate() {
   $("err").textContent = ""; $("result").innerHTML = "";
   if (!cfg.home || !cfg.work) { $("err").textContent = "請先在「設定」填入家和公司地址。"; return; }
-  if (!cfg.key) { $("noKey").hidden = false; return; }
+  if (!cfg.key) {
+    $("err").textContent = "⚠️ 尚未填入 Google API Key,所以無法比較路線。\n請展開下方「設定」貼上 Key 並按儲存;沒有 Key 的話,請用下方的 Google 地圖按鈕。";
+    $("settings").open = true;
+    return;
+  }
 
   const toWork = $("dir").value === "to_work";
   const [origin, dest] = toWork ? [cfg.home, cfg.work] : [cfg.work, cfg.home];
@@ -140,7 +144,13 @@ async function evaluate() {
   try {
     let r = await callRoutes(body);
     if (!r.ok && body.computeAlternativeRoutes) { delete body.computeAlternativeRoutes; r = await callRoutes(body); }
-    if (!r.ok) throw new Error(r.data?.error?.message || "查詢失敗");
+    if (!r.ok) {
+      const st = r.data?.error?.status || "", msg = r.data?.error?.message || "查詢失敗";
+      let tip = "";
+      if (st === "PERMISSION_DENIED") tip = "\n可能原因:Routes API 未啟用、未綁定帳單、或 Key 的網址限制與目前網址不符。";
+      else if (st === "INVALID_ARGUMENT") tip = "\n請檢查地址是否正確,或換更完整的地址。";
+      throw new Error(msg + tip);
+    }
     const routes = (r.data.routes || []).map(x => ({
       name: x.description || "", dur: secs(x.duration),
       stat: x.staticDuration ? secs(x.staticDuration) : null, m: x.distanceMeters || 0,
@@ -148,7 +158,9 @@ async function evaluate() {
     if (!routes.length) throw new Error("查不到路線,請檢查地址");
     show(routes, origin, dest, departAt);
   } catch (e) {
-    $("err").textContent = "⚠️ " + e.message;
+    $("err").textContent = e instanceof TypeError
+      ? "⚠️ 無法連線到 Google。請檢查網路,或關閉廣告攔截/隱私外掛後再試;也確認 Key 的網址限制是否符合目前網址。"
+      : "⚠️ " + e.message;
   } finally {
     $("evalBtn").disabled = false; $("evalBtn").textContent = "評估各路線";
   }
@@ -182,7 +194,7 @@ function show(routes, origin, dest, departAt) {
 
 function render() {
   const d = new Date();
-  $("now").textContent = d.toLocaleString("zh-TW", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" });
+  $("now").textContent = d.toLocaleString("zh-TW", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" }) + " · v2";
   $("trafficLayer").href = "https://www.google.com/maps/@?api=1&map_action=map&layer=traffic";
   const morning = d.getHours() < 12;
   $("dir").value = morning ? "to_work" : "to_home";
