@@ -5,37 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>上下班路況</title>
 <style>
-  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1a73e8; --border:#e3e5e8; }
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1a73e8; --border:#e3e5e8; --onaccent:#fff; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#111317; --card:#1b1e24; --text:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --border:#2c3038; }
+    :root { --bg:#111317; --card:#1b1e24; --text:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --border:#2c3038; --onaccent:#111317; }
   }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
   body { margin:0; padding:20px 16px 40px; background:var(--bg); color:var(--text);
          font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; }
-  main { max-width:480px; margin:0 auto; }
-  h1 { font-size:1.3rem; margin:0 0 4px; }
+  main { max-width:520px; margin:0 auto; }
+  h1 { font-size:1.3rem; margin:0 0 4px; } h2 { font-size:1.05rem; margin:0 0 10px; }
   .sub { color:var(--muted); font-size:.9rem; margin-bottom:18px; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:14px; }
-  .btn { display:block; text-align:center; text-decoration:none; padding:16px; border-radius:12px;
-         font-size:1.1rem; font-weight:600; margin-bottom:10px; border:2px solid var(--accent);
-         color:var(--accent); background:transparent; }
-  .btn.primary { background:var(--accent); color:#fff; }
-  @media (prefers-color-scheme: dark) { .btn.primary { color:#111317; } }
+  .btn { display:block; text-align:center; text-decoration:none; padding:14px; border-radius:12px; font-size:1.05rem;
+         font-weight:600; margin-bottom:10px; border:2px solid var(--accent); color:var(--accent); background:transparent; }
+  .btn.primary { background:var(--accent); color:var(--onaccent); }
   .links a { display:block; padding:10px 0; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
   .links a:last-child { border-bottom:0; }
   label { display:block; font-size:.85rem; color:var(--muted); margin:10px 0 4px; }
-  input, select { width:100%; padding:10px; font-size:1rem; border-radius:8px; border:1px solid var(--border);
-                  background:var(--bg); color:var(--text); }
-  button.save { margin-top:12px; width:100%; padding:10px; font-size:1rem; border-radius:8px; border:0;
-                background:var(--accent); color:#fff; cursor:pointer; }
-  @media (prefers-color-scheme: dark) { button.save { color:#111317; } }
+  input, select { width:100%; padding:10px; font-size:1rem; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); }
+  input[type=checkbox] { width:auto; margin-right:6px; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  button { margin-top:12px; width:100%; padding:12px; font-size:1rem; border-radius:8px; border:0; background:var(--accent); color:var(--onaccent); cursor:pointer; }
   .hint { font-size:.8rem; color:var(--muted); margin-top:8px; }
+  .reco { padding:12px; border-radius:10px; background:var(--bg); margin:14px 0 10px; line-height:1.5; }
+  .route { border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:8px; }
+  .route.best { border:2px solid var(--accent); }
+  .route .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .route .mins { font-size:1.5rem; font-weight:700; white-space:nowrap; }
+  .route .name { font-weight:600; } .route .meta { color:var(--muted); font-size:.85rem; margin-top:4px; }
+  .err { color:#d93025; font-size:.9rem; margin-top:10px; white-space:pre-wrap; }
 </style>
 </head>
 <body>
 <main>
   <h1>🚦 上下班路況</h1>
   <div class="sub" id="now"></div>
+
+  <div class="card" id="evalCard">
+    <h2>🧭 路線評估</h2>
+    <div class="row">
+      <div><label>方向</label><select id="dir"><option value="to_work">上班(家→公司)</option><option value="to_home">下班(公司→家)</option></select></div>
+      <div><label>出發時間</label><select id="depart">
+        <option value="0">現在</option><option value="10">10 分鐘後</option>
+        <option value="20">20 分鐘後</option><option value="30">30 分鐘後</option><option value="60">1 小時後</option></select></div>
+    </div>
+    <label><input type="checkbox" id="noToll">避開收費道路(開車/機車)</label>
+    <button id="evalBtn">評估各路線</button>
+    <div class="err" id="err"></div>
+    <div id="result"></div>
+    <div class="hint" id="noKey" hidden>需要先在下方「設定」填入 Google API Key 才能比較路線;沒有的話,仍可使用下方的 Google 地圖按鈕。</div>
+  </div>
 
   <div id="buttons"></div>
 
@@ -45,20 +64,16 @@
   </div>
 
   <details class="card" id="settings">
-    <summary>⚙️ 設定地址</summary>
-    <label>家</label>
-    <input id="home" placeholder="例:台中車站">
-    <label>公司</label>
-    <input id="work" placeholder="例:台中市政府">
+    <summary>⚙️ 設定</summary>
+    <label>家</label><input id="home" placeholder="例:台中車站">
+    <label>公司</label><input id="work" placeholder="例:台中市政府">
     <label>交通方式</label>
-    <select id="mode">
-      <option value="driving">開車</option>
-      <option value="two-wheeler">機車</option>
-      <option value="transit">大眾運輸</option>
-      <option value="walking">步行</option>
-    </select>
-    <button class="save" id="save">儲存</button>
-    <div class="hint">地址只存在你自己的瀏覽器(localStorage),不會上傳到 GitHub。</div>
+    <select id="mode"><option value="driving">開車</option><option value="two-wheeler">機車</option>
+      <option value="transit">大眾運輸</option><option value="walking">步行</option></select>
+    <label>Google API Key(選填,用於路線評估)</label>
+    <input id="key" type="password" placeholder="AIza..." autocomplete="off">
+    <button id="save">儲存</button>
+    <div class="hint">地址與 Key 只存在你自己的瀏覽器(localStorage),不會上傳到 GitHub。</div>
   </details>
 </main>
 
@@ -68,48 +83,132 @@ const store = {
   get(k, d = "") { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
 };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 
-// 網址參數優先,例如 ?home=台中車站&work=台中市政府&mode=two-wheeler
 const q = new URLSearchParams(location.search);
 const cfg = {
   home: q.get("home") || store.get("home"),
   work: q.get("work") || store.get("work"),
   mode: q.get("mode") || store.get("mode", "driving"),
+  key: store.get("key"),
 };
+const API_MODE = { "driving":"DRIVE", "two-wheeler":"TWO_WHEELER", "transit":"TRANSIT", "walking":"WALK" };
 
-function dirUrl(origin, dest) {
-  return "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(origin) +
-         "&destination=" + encodeURIComponent(dest) + "&travelmode=" + cfg.mode;
+function dirUrl(o, d) {
+  return "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(o) +
+         "&destination=" + encodeURIComponent(d) + "&travelmode=" + cfg.mode;
+}
+const secs = s => Math.round(parseFloat(String(s).replace("s", "")));
+const hhmm = d => d.toLocaleTimeString("zh-TW", { hour:"2-digit", minute:"2-digit", hour12:false });
+function level(r) { return r < 1.15 ? "🟢 順暢" : r < 1.4 ? "🟡 稍慢" : r < 1.8 ? "🟠 壅塞" : "🔴 嚴重壅塞"; }
+
+async function callRoutes(body) {
+  const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": cfg.key,
+      "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters,routes.description",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+async function evaluate() {
+  $("err").textContent = ""; $("result").innerHTML = "";
+  if (!cfg.home || !cfg.work) { $("err").textContent = "請先在「設定」填入家和公司地址。"; return; }
+  if (!cfg.key) { $("noKey").hidden = false; return; }
+
+  const toWork = $("dir").value === "to_work";
+  const [origin, dest] = toWork ? [cfg.home, cfg.work] : [cfg.work, cfg.home];
+  const offset = parseInt($("depart").value, 10);
+  const mode = API_MODE[cfg.mode] || "DRIVE";
+  const trafficAware = mode === "DRIVE" || mode === "TWO_WHEELER";
+
+  const body = {
+    origin: { address: origin }, destination: { address: dest },
+    travelMode: mode, languageCode: "zh-TW", regionCode: "TW", computeAlternativeRoutes: true,
+  };
+  if (trafficAware) body.routingPreference = "TRAFFIC_AWARE";
+  if (trafficAware && $("noToll").checked) body.routeModifiers = { avoidTolls: true };
+  const departAt = new Date(Date.now() + offset * 60000);
+  if (offset > 0) body.departureTime = departAt.toISOString();
+
+  $("evalBtn").disabled = true; $("evalBtn").textContent = "查詢中…";
+  try {
+    let r = await callRoutes(body);
+    if (!r.ok && body.computeAlternativeRoutes) { delete body.computeAlternativeRoutes; r = await callRoutes(body); }
+    if (!r.ok) throw new Error(r.data?.error?.message || "查詢失敗");
+    const routes = (r.data.routes || []).map(x => ({
+      name: x.description || "", dur: secs(x.duration),
+      stat: x.staticDuration ? secs(x.staticDuration) : null, m: x.distanceMeters || 0,
+    })).sort((a, b) => a.dur - b.dur);
+    if (!routes.length) throw new Error("查不到路線,請檢查地址");
+    show(routes, origin, dest, departAt);
+  } catch (e) {
+    $("err").textContent = "⚠️ " + e.message;
+  } finally {
+    $("evalBtn").disabled = false; $("evalBtn").textContent = "評估各路線";
+  }
+}
+
+function show(routes, origin, dest, departAt) {
+  const best = routes[0];
+  let reco = `⭐ 建議走「${esc(best.name || "路線 1")}」,預計 ${Math.round(best.dur / 60)} 分鐘`;
+  if (routes.length > 1) {
+    const gap = Math.round((routes[1].dur - best.dur) / 60);
+    reco += gap >= 3 ? `,比第二名快 ${gap} 分鐘。` : `。各路線差距只有 ${gap} 分鐘,可挑你熟悉或紅綠燈較少的。`;
+  } else reco += "。(只找到一條路線)";
+  let html = `<div class="reco">${reco}</div>`;
+  routes.forEach((r, i) => {
+    const mins = Math.round(r.dur / 60), km = (r.m / 1000).toFixed(1);
+    let meta = `${km} 公里 · 預計 ${hhmm(new Date(departAt.getTime() + r.dur * 1000))} 抵達`;
+    let lv = "";
+    if (r.stat) {
+      const delay = Math.max(0, Math.round((r.dur - r.stat) / 60));
+      lv = level(r.dur / r.stat) + " · ";
+      meta += ` · 平常約 ${Math.round(r.stat / 60)} 分(多 ${delay} 分)`;
+    }
+    html += `<div class="route${i === 0 ? " best" : ""}"><div class="top">
+      <span class="name">${i === 0 ? "⭐ " : (i + 1) + ". "}${esc(r.name || "路線 " + (i + 1))}</span>
+      <span class="mins">${mins} 分</span></div>
+      <div class="meta">${lv}${meta}</div></div>`;
+  });
+  html += `<a class="btn" style="margin-top:10px" href="${dirUrl(origin, dest)}" target="_blank" rel="noopener">在 Google 地圖看路線圖</a>`;
+  $("result").innerHTML = html;
 }
 
 function render() {
   const d = new Date();
   $("now").textContent = d.toLocaleString("zh-TW", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" });
   $("trafficLayer").href = "https://www.google.com/maps/@?api=1&map_action=map&layer=traffic";
+  const morning = d.getHours() < 12;
+  $("dir").value = morning ? "to_work" : "to_home";
+  $("noKey").hidden = !!cfg.key;
 
-  const box = $("buttons");
-  box.innerHTML = "";
+  const box = $("buttons"); box.innerHTML = "";
   if (!cfg.home || !cfg.work) {
-    box.innerHTML = '<div class="card">請先展開下方「設定地址」填入家和公司。</div>';
+    box.innerHTML = '<div class="card">請先展開下方「設定」填入家和公司。</div>';
     $("settings").open = true;
   } else {
-    const morning = d.getHours() < 12;
-    const toWork = Object.assign(document.createElement("a"), {
-      className: "btn" + (morning ? " primary" : ""), textContent: "🚗 上班路況(家 → 公司)",
-      href: dirUrl(cfg.home, cfg.work), target: "_blank", rel: "noopener" });
-    const toHome = Object.assign(document.createElement("a"), {
-      className: "btn" + (morning ? "" : " primary"), textContent: "🏠 下班路況(公司 → 家)",
-      href: dirUrl(cfg.work, cfg.home), target: "_blank", rel: "noopener" });
-    box.append(morning ? toWork : toHome, morning ? toHome : toWork);
+    const mk = (text, href, primary) => Object.assign(document.createElement("a"),
+      { className: "btn" + (primary ? " primary" : ""), textContent: text, href, target: "_blank", rel: "noopener" });
+    const a = mk("🚗 上班:Google 地圖(家 → 公司)", dirUrl(cfg.home, cfg.work), morning);
+    const b = mk("🏠 下班:Google 地圖(公司 → 家)", dirUrl(cfg.work, cfg.home), !morning);
+    box.append(...(morning ? [a, b] : [b, a]));
   }
-  $("home").value = cfg.home; $("work").value = cfg.work; $("mode").value = cfg.mode;
+  $("home").value = cfg.home; $("work").value = cfg.work; $("mode").value = cfg.mode; $("key").value = cfg.key;
 }
 
 $("save").onclick = () => {
-  cfg.home = $("home").value.trim(); cfg.work = $("work").value.trim(); cfg.mode = $("mode").value;
-  store.set("home", cfg.home); store.set("work", cfg.work); store.set("mode", cfg.mode);
+  cfg.home = $("home").value.trim(); cfg.work = $("work").value.trim();
+  cfg.mode = $("mode").value; cfg.key = $("key").value.trim();
+  ["home", "work", "mode", "key"].forEach(k => store.set(k, cfg[k]));
   render();
 };
+$("evalBtn").onclick = evaluate;
 render();
 </script>
 </body>
