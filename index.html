@@ -14,19 +14,24 @@
          font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; }
   main { max-width:480px; margin:0 auto; }
   h1 { font-size:1.3rem; margin:0 0 4px; }
-  .sub { color:var(--muted); font-size:.9rem; margin-bottom:18px; }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:14px; }
-  .btn { display:block; text-align:center; text-decoration:none; padding:18px; border-radius:12px; font-size:1.15rem;
-         font-weight:600; margin-bottom:10px; border:2px solid var(--accent); color:var(--accent); background:transparent; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .btn { display:block; text-decoration:none; padding:16px; border-radius:12px; margin-bottom:10px;
+         border:2px solid var(--accent); color:var(--accent); background:transparent; }
   .btn.primary { background:var(--accent); color:var(--onaccent); }
-  .links a { display:block; padding:10px 0; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
-  .links a:last-child { border-bottom:0; }
+  .btn b { display:block; font-size:1.1rem; }
+  .btn small { display:block; margin-top:3px; font-size:.8rem; opacity:.85; }
   label { display:block; font-size:.85rem; color:var(--muted); margin:10px 0 4px; }
   input, select { width:100%; padding:10px; font-size:1rem; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); }
   input[type=checkbox] { width:auto; margin-right:6px; }
   button { margin-top:12px; width:100%; padding:12px; font-size:1rem; border-radius:8px; border:0; background:var(--accent); color:var(--onaccent); cursor:pointer; }
-  .hint { font-size:.8rem; color:var(--muted); margin-top:8px; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
   .tip { font-size:.85rem; color:var(--muted); margin:0 2px 14px; line-height:1.5; }
+  .hint { font-size:.8rem; color:var(--muted); margin-top:8px; line-height:1.5; }
+  .links a { display:block; padding:10px 0; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
+  .links a:last-child { border-bottom:0; }
+  fieldset { border:1px solid var(--border); border-radius:10px; margin:12px 0 0; padding:4px 10px 10px; }
+  legend { font-size:.85rem; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -34,11 +39,14 @@
   <h1>🚦 上下班路況</h1>
   <div class="sub" id="now"></div>
 
-  <div id="buttons"></div>
-  <div class="tip">開啟後 Google 地圖會顯示即時路況、預估時間與備選路線,點選不同路線即可比較。</div>
+  <label style="margin-top:0">方向</label>
+  <select id="dir"><option value="to_work">上班(家 → 公司)</option><option value="to_home">下班(公司 → 家)</option></select>
+
+  <div id="routes" style="margin-top:14px"></div>
+  <div class="tip">點選後會開啟 Google 地圖,顯示該路線的即時路況與預估時間。想比較就逐一點開看。</div>
 
   <div class="card links">
-    <a id="trafficLayer" target="_blank" rel="noopener">🗺 Google 地圖:即時路況圖層</a>
+    <a href="https://www.google.com/maps/@?api=1&map_action=map&layer=traffic" target="_blank" rel="noopener">🗺 Google 地圖:即時路況圖層</a>
     <a href="https://1968.freeway.gov.tw/" target="_blank" rel="noopener">🛣 1968 國道即時路況</a>
   </div>
 
@@ -46,12 +54,10 @@
     <summary>⚙️ 設定</summary>
     <label>家</label><input id="home" placeholder="例:台中車站">
     <label>公司</label><input id="work" placeholder="例:台中市政府">
-    <label>交通方式</label>
-    <select id="mode"><option value="driving">開車</option><option value="two-wheeler">機車</option>
-      <option value="transit">大眾運輸</option><option value="walking">步行</option></select>
-    <label><input type="checkbox" id="noToll">避開收費道路 / 高速公路</label>
+    <div id="presetBox"></div>
+    <div class="hint">「經由地點」用來讓路線經過該處(填該路段上的地名或路名)。開啟 Google 地圖後,請確認路線真的走到你要的道路;不對就換一個更明確的經由地點。設定只存在你自己的瀏覽器,不會上傳到 GitHub。</div>
     <button id="save">儲存</button>
-    <div class="hint">設定只存在你自己的瀏覽器(localStorage),不會上傳到 GitHub。</div>
+    <button class="ghost" id="reset">恢復預設路線</button>
   </details>
 </main>
 
@@ -61,47 +67,75 @@ const store = {
   get(k, d = "") { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
 };
-const q = new URLSearchParams(location.search);
-const cfg = {
-  home: q.get("home") || store.get("home"),
-  work: q.get("work") || store.get("work"),
-  mode: q.get("mode") || store.get("mode", "driving"),
-  noToll: store.get("noToll") === "1",
-};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 
-function dirUrl(o, d) {
+const DEFAULT_PRESETS = [
+  { name: "走國道",         via: "國道一號 彰化交流道", avoidHighways: false },
+  { name: "走台1線",        via: "彰化市中山路二段",   avoidHighways: true  },
+  { name: "走其他平面道路", via: "",                   avoidHighways: true  },
+];
+function loadPresets() {
+  try { const p = JSON.parse(store.get("presets")); if (Array.isArray(p) && p.length) return p; } catch {}
+  return JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+}
+const q = new URLSearchParams(location.search);
+const cfg = { home: q.get("home") || store.get("home"), work: q.get("work") || store.get("work"), presets: loadPresets() };
+
+function mapsUrl(o, d, p) {
   let u = "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(o) +
-          "&destination=" + encodeURIComponent(d) + "&travelmode=" + cfg.mode;
-  if (cfg.noToll && cfg.mode === "driving") u += "&avoid=tolls,highways";
+          "&destination=" + encodeURIComponent(d) + "&travelmode=driving";
+  if (p && p.via) u += "&waypoints=" + encodeURIComponent(p.via);
+  if (p && p.avoidHighways) u += "&avoid=highways,tolls";
   return u;
 }
 
-function render() {
-  const d = new Date();
-  $("now").textContent = d.toLocaleString("zh-TW", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" }) + " · v3";
-  $("trafficLayer").href = "https://www.google.com/maps/@?api=1&map_action=map&layer=traffic";
-  const morning = d.getHours() < 12;
-  const box = $("buttons"); box.innerHTML = "";
+function renderRoutes() {
+  const box = $("routes");
   if (!cfg.home || !cfg.work) {
     box.innerHTML = '<div class="card">請先展開下方「設定」填入家和公司。</div>';
-    $("settings").open = true;
-  } else {
-    const mk = (text, href, primary) => Object.assign(document.createElement("a"),
-      { className: "btn" + (primary ? " primary" : ""), textContent: text, href, target: "_blank", rel: "noopener" });
-    const a = mk("🚗 上班路況(家 → 公司)", dirUrl(cfg.home, cfg.work), morning);
-    const b = mk("🏠 下班路況(公司 → 家)", dirUrl(cfg.work, cfg.home), !morning);
-    box.append(...(morning ? [a, b] : [b, a]));
+    $("settings").open = true; return;
   }
-  $("home").value = cfg.home; $("work").value = cfg.work; $("mode").value = cfg.mode; $("noToll").checked = cfg.noToll;
+  const toWork = $("dir").value === "to_work";
+  const [o, d] = toWork ? [cfg.home, cfg.work] : [cfg.work, cfg.home];
+  const items = [{ name: "⭐ Google 推薦最快路線", sub: "由 Google 依即時路況自動挑選", url: mapsUrl(o, d, null), primary: true }]
+    .concat(cfg.presets.map(p => ({
+      name: p.name,
+      sub: p.avoidHighways ? (p.via ? `經過「${p.via}」,避開國道` : "避開國道、收費道路") : (p.via ? `經過「${p.via}」` : "不指定經過地點"),
+      url: mapsUrl(o, d, p), primary: false })));
+  box.innerHTML = items.map(it =>
+    `<a class="btn${it.primary ? " primary" : ""}" href="${it.url}" target="_blank" rel="noopener"><b>${esc(it.name)}</b><small>${esc(it.sub)}</small></a>`).join("");
+}
+
+function renderSettings() {
+  $("home").value = cfg.home; $("work").value = cfg.work;
+  $("presetBox").innerHTML = cfg.presets.map((p, i) => `
+    <fieldset><legend>路線 ${i + 1}</legend>
+      <label>名稱</label><input data-i="${i}" data-f="name" value="${esc(p.name)}">
+      <label>經由地點(可留空)</label><input data-i="${i}" data-f="via" value="${esc(p.via)}" placeholder="例:國道一號 彰化交流道">
+      <label><input type="checkbox" data-i="${i}" data-f="avoidHighways" ${p.avoidHighways ? "checked" : ""}>避開國道(走平面道路)</label>
+    </fieldset>`).join("");
 }
 
 $("save").onclick = () => {
   cfg.home = $("home").value.trim(); cfg.work = $("work").value.trim();
-  cfg.mode = $("mode").value; cfg.noToll = $("noToll").checked;
-  store.set("home", cfg.home); store.set("work", cfg.work); store.set("mode", cfg.mode); store.set("noToll", cfg.noToll ? "1" : "0");
-  render();
+  document.querySelectorAll("#presetBox [data-i]").forEach(el => {
+    const p = cfg.presets[+el.dataset.i], f = el.dataset.f;
+    p[f] = f === "avoidHighways" ? el.checked : el.value.trim();
+  });
+  store.set("home", cfg.home); store.set("work", cfg.work); store.set("presets", JSON.stringify(cfg.presets));
+  renderRoutes();
 };
-render();
+$("reset").onclick = () => {
+  cfg.presets = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+  store.set("presets", JSON.stringify(cfg.presets)); renderSettings(); renderRoutes();
+};
+$("dir").onchange = renderRoutes;
+
+const now = new Date();
+$("now").textContent = now.toLocaleString("zh-TW", { month:"numeric", day:"numeric", weekday:"short", hour:"2-digit", minute:"2-digit" }) + " · v5";
+$("dir").value = now.getHours() < 12 ? "to_work" : "to_home";
+renderSettings();
+renderRoutes();
 </script>
 </body>
 </html>
