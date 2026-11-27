@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-27T07:52:27+08:00",
+ "updated": "2026-11-27T09:00:34+08:00",
  "routes": [],
  "error": "抓取失敗:無法連線到高公局(https://tisvcloud.freeway.gov.tw/history/motc20/LiveTraffic.xml):<urlopen error timed out>。可能是對方擋海外 IP 或網站暫時無回應。"
 }
